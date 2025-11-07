@@ -56,6 +56,17 @@
             </svg>
         );
 
+        const TrophyIcon = () => (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
+                <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path>
+                <path d="M4 22h16"></path>
+                <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path>
+                <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path>
+                <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path>
+            </svg>
+        );
+
         const BOARD_WIDTH = 10;
         const BOARD_HEIGHT = 20;
         const BLOCK_SIZE = 30;
@@ -140,6 +151,11 @@
           const [isMuted, setIsMuted] = useState(false);
           const [isPaused, setIsPaused] = useState(false);
           const audioRef = React.useRef(null);
+          const [leaderboard, setLeaderboard] = useState([]);
+          const [showLeaderboard, setShowLeaderboard] = useState(false);
+          const [showHighScoreEntry, setShowHighScoreEntry] = useState(false);
+          const [playerName, setPlayerName] = useState('');
+          const [finalGameScore, setFinalGameScore] = useState(0);
 
           useEffect(() => {
             const loadImages = async () => {
@@ -164,6 +180,7 @@
             };
 
             loadImages();
+            loadLeaderboard();
 
             audioRef.current = new Audio('./music/background.mp3');
             audioRef.current.loop = true;
@@ -176,6 +193,45 @@
               }
             };
           }, []);
+
+          const loadLeaderboard = async () => {
+            try {
+              const result = await window.storage.get('aespa-tetris-leaderboard', true);
+              if (result && result.value) {
+                const scores = JSON.parse(result.value);
+                setLeaderboard(scores);
+              }
+            } catch (error) {
+              console.log('No leaderboard data yet');
+              setLeaderboard([]);
+            }
+          };
+
+          const saveScoreToLeaderboard = async (name, finalScore) => {
+            try {
+              const newEntry = {
+                name: name.trim() || 'Anonymous',
+                score: finalScore,
+                date: new Date().toISOString()
+              };
+
+              const updatedLeaderboard = [...leaderboard, newEntry]
+                .sort((a, b) => b.score - a.score)
+                .slice(0, 10);
+
+              await window.storage.set('aespa-tetris-leaderboard', JSON.stringify(updatedLeaderboard), true);
+              setLeaderboard(updatedLeaderboard);
+              setShowHighScoreEntry(false);
+              setShowLeaderboard(true);
+            } catch (error) {
+              console.error('Failed to save score:', error);
+            }
+          };
+
+          const isHighScore = (finalScore) => {
+            if (leaderboard.length < 10) return true;
+            return finalScore > leaderboard[leaderboard.length - 1].score;
+          };
 
           useEffect(() => {
             if (!audioRef.current) return;
@@ -233,6 +289,9 @@
             setGameOver(false);
             setGameStarted(true);
             setIsPaused(false);
+            setPlayerName('');
+            setShowHighScoreEntry(false);
+            setFinalGameScore(0);
             if (audioRef.current) {
               audioRef.current.currentTime = 0;
             }
@@ -302,9 +361,12 @@
               const newBoard = mergePieceToBoard();
               const { newBoard: clearedBoard, linesCleared } = clearLines(newBoard);
               
+              // Calculate final score
+              const finalScore = score + (linesCleared * 100 * level);
+              
               setBoard(clearedBoard);
-              setScore(prev => prev + linesCleared * 100 * level);
-              setLevel(Math.floor(score / 1000) + 1);
+              setScore(finalScore);
+              setLevel(Math.floor(finalScore / 1000) + 1);
               
               const nextPiece = createNewPiece();
               const startPos = { x: Math.floor(BOARD_WIDTH / 2) - 1, y: 0 };
@@ -312,12 +374,18 @@
               if (checkCollision(nextPiece, startPos, clearedBoard)) {
                 setGameOver(true);
                 setGameStarted(false);
+                
+                // Check if it's a high score using the final calculated score
+                setFinalGameScore(finalScore);
+                if (isHighScore(finalScore)) {
+                  setShowHighScoreEntry(true);
+                }
               } else {
                 setCurrentPiece(nextPiece);
                 setPosition(startPos);
               }
             }
-          }, [currentPiece, position, board, gameOver, gameStarted, score, level, isPaused]);
+          }, [currentPiece, position, board, gameOver, gameStarted, score, level, isPaused, leaderboard]);
 
           const moveLeft = () => {
             if (!currentPiece || gameOver || isPaused) return;
@@ -506,6 +574,13 @@
                         {isPaused ? <PlayIconSmall /> : <PauseIcon />}
                       </button>
                     )}
+                    <button
+                      onClick={() => setShowLeaderboard(true)}
+                      className="bg-black/50 hover:bg-black/70 text-white p-2 rounded-lg transition"
+                      title="Leaderboard"
+                    >
+                      <TrophyIcon />
+                    </button>
                   </div>
                   <p className="text-sm text-pink-300 mt-2">by @kwon88im</p>
                   {!allImagesPreloaded && (
@@ -652,10 +727,98 @@
                         @KWON88IM
                       </a>
                       <div className="text-gray-400 text-xs mt-2">Music by Walen - Gameboy</div>
-                      <div className="text-gray-400 text-xs mt-2">Version 1.2.0</div>
+                      <div className="text-gray-400 text-xs mt-2">Version 1.2.1</div>
                     </div>
                   </div>
                 </div>
+
+                {/* High Score Entry Modal */}
+                {showHighScoreEntry && (
+                  <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+                    <div className="bg-gradient-to-br from-purple-900 to-pink-900 rounded-lg p-8 max-w-md w-full border-4 border-pink-500">
+                      <h2 className="text-4xl font-bold text-white text-center mb-4">🎉 NEW HIGH SCORE! 🎉</h2>
+                      <p className="text-2xl text-pink-300 text-center mb-6">Score: {finalGameScore}</p>
+                      <input
+                        type="text"
+                        placeholder="Enter your name"
+                        value={playerName}
+                        onChange={(e) => setPlayerName(e.target.value)}
+                        maxLength={20}
+                        className="w-full bg-black/50 text-white border-2 border-pink-500 rounded-lg px-4 py-3 mb-4 text-center text-xl"
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter') {
+                            saveScoreToLeaderboard(playerName, finalGameScore);
+                          }
+                        }}
+                        autoFocus
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => saveScoreToLeaderboard(playerName, finalGameScore)}
+                          className="flex-1 bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 text-white font-bold py-3 px-6 rounded-lg transition"
+                        >
+                          Save Score
+                        </button>
+                        <button
+                          onClick={() => setShowHighScoreEntry(false)}
+                          className="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg transition"
+                        >
+                          Skip
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Leaderboard Modal */}
+                {showLeaderboard && (
+                  <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+                    <div className="bg-gradient-to-br from-purple-900 to-pink-900 rounded-lg p-8 max-w-md w-full border-4 border-pink-500 max-h-[90vh] overflow-y-auto">
+                      <div className="flex items-center justify-center mb-6">
+                        <TrophyIcon />
+                        <h2 className="text-3xl font-bold text-white ml-2">LEADERBOARD</h2>
+                      </div>
+                      
+                      {leaderboard.length === 0 ? (
+                        <p className="text-white text-center py-8">No scores yet. Be the first!</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {leaderboard.map((entry, index) => (
+                            <div
+                              key={index}
+                              className={`flex items-center justify-between p-3 rounded-lg ${
+                                index === 0 ? 'bg-yellow-500/30 border-2 border-yellow-500' :
+                                index === 1 ? 'bg-gray-400/30 border-2 border-gray-400' :
+                                index === 2 ? 'bg-orange-600/30 border-2 border-orange-600' :
+                                'bg-black/30'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <span className="text-2xl font-bold text-white w-8">
+                                  {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`}
+                                </span>
+                                <div>
+                                  <div className="text-white font-bold">{entry.name}</div>
+                                  <div className="text-pink-300 text-xs">
+                                    {new Date(entry.date).toLocaleDateString()}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="text-2xl font-bold text-white">{entry.score}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      
+                      <button
+                        onClick={() => setShowLeaderboard(false)}
+                        className="w-full mt-6 bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 text-white font-bold py-3 px-6 rounded-lg transition"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           );
