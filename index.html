@@ -196,9 +196,10 @@
 
           const loadLeaderboard = async () => {
             try {
-              const result = await window.storage.get('aespa-tetris-leaderboard', true);
-              if (result && result.value) {
-                const scores = JSON.parse(result.value);
+              // Use localStorage for deployed version (personal scores only)
+              const stored = localStorage.getItem('aespa-tetris-leaderboard');
+              if (stored) {
+                const scores = JSON.parse(stored);
                 setLeaderboard(scores);
               }
             } catch (error) {
@@ -219,12 +220,18 @@
                 .sort((a, b) => b.score - a.score)
                 .slice(0, 10);
 
-              await window.storage.set('aespa-tetris-leaderboard', JSON.stringify(updatedLeaderboard), true);
+              // Use localStorage for deployed version (personal scores only)
+              localStorage.setItem('aespa-tetris-leaderboard', JSON.stringify(updatedLeaderboard));
               setLeaderboard(updatedLeaderboard);
               setShowHighScoreEntry(false);
-              setShowLeaderboard(true);
+              
+              // Show leaderboard after saving
+              setTimeout(() => {
+                setShowLeaderboard(true);
+              }, 300);
             } catch (error) {
               console.error('Failed to save score:', error);
+              setShowHighScoreEntry(false);
             }
           };
 
@@ -374,12 +381,9 @@
               if (checkCollision(nextPiece, startPos, clearedBoard)) {
                 setGameOver(true);
                 setGameStarted(false);
-                
-                // Check if it's a high score using the final calculated score
                 setFinalGameScore(finalScore);
-                if (isHighScore(finalScore)) {
-                  setShowHighScoreEntry(true);
-                }
+                // Always show name entry for all players
+                setShowHighScoreEntry(true);
               } else {
                 setCurrentPiece(nextPiece);
                 setPosition(startPos);
@@ -574,13 +578,6 @@
                         {isPaused ? <PlayIconSmall /> : <PauseIcon />}
                       </button>
                     )}
-                    <button
-                      onClick={() => setShowLeaderboard(true)}
-                      className="bg-black/50 hover:bg-black/70 text-white p-2 rounded-lg transition"
-                      title="Leaderboard"
-                    >
-                      <TrophyIcon />
-                    </button>
                   </div>
                   <p className="text-sm text-pink-300 mt-2">by @kwon88im</p>
                   {!allImagesPreloaded && (
@@ -715,6 +712,14 @@
                           <span className="text-white text-sm">{member.name}</span>
                         </div>
                       ))}
+                      
+                      <button
+                        onClick={() => setShowLeaderboard(true)}
+                        className="w-full mt-4 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-bold py-3 px-6 rounded-lg flex items-center justify-center gap-2 transition"
+                      >
+                        <TrophyIcon />
+                        View Leaderboard
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -727,7 +732,7 @@
                         @KWON88IM
                       </a>
                       <div className="text-gray-400 text-xs mt-2">Music by Walen - Gameboy</div>
-                      <div className="text-gray-400 text-xs mt-2">Version 1.2.1</div>
+                      <div className="text-gray-400 text-xs mt-2">Version 1.3.0 (Personal Scores)</div>
                     </div>
                   </div>
                 </div>
@@ -736,8 +741,20 @@
                 {showHighScoreEntry && (
                   <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
                     <div className="bg-gradient-to-br from-purple-900 to-pink-900 rounded-lg p-8 max-w-md w-full border-4 border-pink-500">
-                      <h2 className="text-4xl font-bold text-white text-center mb-4">🎉 NEW HIGH SCORE! 🎉</h2>
-                      <p className="text-2xl text-pink-300 text-center mb-6">Score: {finalGameScore}</p>
+                      <h2 className="text-4xl font-bold text-white text-center mb-4">
+                        {isHighScore(finalGameScore) ? '🎉 NEW HIGH SCORE! 🎉' : 'Game Over!'}
+                      </h2>
+                      <p className="text-2xl text-pink-300 text-center mb-2">Score: {finalGameScore}</p>
+                      {isHighScore(finalGameScore) ? (
+                        <p className="text-sm text-yellow-300 text-center mb-2">You made it to your Top 10!</p>
+                      ) : (
+                        <p className="text-sm text-gray-300 text-center mb-2">Save your score to track your progress</p>
+                      )}
+                      <div className="bg-blue-900/50 border border-blue-400 rounded-lg p-3 mb-4">
+                        <p className="text-xs text-blue-200 text-center">
+                          ℹ️ Scores are saved locally on your device only. This is your personal record!
+                        </p>
+                      </div>
                       <input
                         type="text"
                         placeholder="Enter your name"
@@ -774,13 +791,19 @@
                 {showLeaderboard && (
                   <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
                     <div className="bg-gradient-to-br from-purple-900 to-pink-900 rounded-lg p-8 max-w-md w-full border-4 border-pink-500 max-h-[90vh] overflow-y-auto">
-                      <div className="flex items-center justify-center mb-6">
+                      <div className="flex items-center justify-center mb-4">
                         <TrophyIcon />
                         <h2 className="text-3xl font-bold text-white ml-2">LEADERBOARD</h2>
                       </div>
                       
+                      <div className="bg-blue-900/50 border border-blue-400 rounded-lg p-2 mb-4">
+                        <p className="text-xs text-blue-200 text-center">
+                          📊 Your Personal Top 10 Scores (Saved on this device only)
+                        </p>
+                      </div>
+                      
                       {leaderboard.length === 0 ? (
-                        <p className="text-white text-center py-8">No scores yet. Be the first!</p>
+                        <p className="text-white text-center py-8">No scores yet. Play to set your first record!</p>
                       ) : (
                         <div className="space-y-2">
                           {leaderboard.map((entry, index) => (
